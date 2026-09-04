@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI课堂 · 长方体纸盒剪开</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; font-family:'PingFang SC','Microsoft YaHei','Segoe UI',sans-serif; }
+  body { background:linear-gradient(135deg,#dbeafe 0%,#e0f2fe 35%,#fef3c7 100%); }
+  #stage { position:fixed; inset:0; }
+  #stage canvas { display:block; }
+
+  .card { background:rgba(255,255,255,.88); backdrop-filter:blur(10px); border-radius:16px;
+          box-shadow:0 6px 24px rgba(30,64,175,.12); border:1px solid rgba(255,255,255,.7); }
+
+  /* ===== 顶栏 ===== */
+  #topbar { position:fixed; top:14px; left:14px; right:14px; z-index:20; display:flex;
+            align-items:center; gap:12px; padding:10px 16px; flex-wrap:wrap; }
+  #topbar .title { font-size:20px; font-weight:800; color:#1e3a8a; letter-spacing:.5px; }
+  #topbar .subtitle { font-size:12px; color:#64748b; margin-top:2px; }
+  .spacer { flex:1; }
+  .mode-group { display:flex; gap:6px; background:#eef2ff; padding:4px; border-radius:12px; }
+  .mode-btn { border:none; background:transparent; padding:8px 14px; border-radius:9px; font-size:14px;
+              font-weight:700; color:#475569; cursor:pointer; transition:all .18s; white-space:nowrap; }
+  .mode-btn:hover { background:#e0e7ff; }
+  .mode-btn.active { background:#3a86ff; color:#fff; box-shadow:0 3px 10px rgba(58,134,255,.4); }
+  .icon-btn { border:none; background:#eef2ff; width:38px; height:38px; border-radius:10px; font-size:17px;
+              cursor:pointer; transition:all .18s; color:#475569; }
+  .icon-btn:hover { background:#dbe4ff; transform:translateY(-1px); }
+
+  /* ===== 右侧面板 ===== */
+  #panel { position:fixed; top:86px; right:14px; bottom:76px; width:288px; z-index:15;
+           overflow-y:auto; display:flex; flex-direction:column; gap:12px; padding-bottom:6px;
+           scrollbar-width:thin; transition:transform .32s ease; }
+  #panel.collapsed { transform:translateX(calc(100% + 20px)); }
+  #panel .card { padding:14px 16px; }
+  #panel h3 { font-size:14px; color:#1e3a8a; margin-bottom:10px; font-weight:800; }
+  .btn { display:block; width:100%; border:none; border-radius:11px; padding:10px 12px; font-size:14px;
+         font-weight:700; cursor:pointer; transition:all .18s; margin-bottom:8px; }
+  .btn:last-child { margin-bottom:0; }
+  .btn:active { transform:scale(.97); }
+  .btn-preset { background:linear-gradient(135deg,#fff7ed,#ffedd5); color:#c2410c; border:1.5px solid #fed7aa; }
+  .btn-preset:hover { background:linear-gradient(135deg,#ffedd5,#fed7aa); box-shadow:0 4px 12px rgba(194,65,12,.18); }
+  .btn-op { background:#eef2ff; color:#3730a3; border:1.5px solid #c7d2fe; margin-bottom:0; }
+  .btn-op:hover { background:#e0e7ff; }
+  .btn-op:disabled { opacity:.45; cursor:not-allowed; }
+  .btn-warn { background:#fef2f2; color:#b91c1c; border:1.5px solid #fecaca; }
+  .btn-warn:hover { background:#fee2e2; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .tip { font-size:11.5px; color:#94a3b8; margin-top:8px; line-height:1.5; }
+
+  .chk-row { display:flex; align-items:center; gap:8px; font-size:13.5px; color:#334155;
+             padding:6px 0; cursor:pointer; user-select:none; font-weight:600; }
+  .chk-row input { width:17px; height:17px; accent-color:#3a86ff; cursor:pointer; }
+
+  .slider-row { display:flex; align-items:center; gap:10px; padding:5px 0; }
+  .slider-row .slider-name { font-size:14.5px; font-weight:800; width:18px; }
+  .slider-row input[type=range] { flex:1; accent-color:#3a86ff; cursor:pointer; height:22px; }
+  .slider-row b { width:22px; text-align:center; font-size:14.5px; color:#0f172a; font-weight:800; }
+
+  /* ===== 进度条 ===== */
+  #progress-wrap { display:flex; align-items:center; gap:8px; margin-top:4px; }
+  #progress-bar { flex:1; height:10px; background:#e2e8f0; border-radius:99px; overflow:hidden; }
+  #progress-fill { height:100%; width:0%; border-radius:99px; transition:width .35s;
+                   background:linear-gradient(90deg,#3a86ff,#06d6a0); }
+  #progress-text { font-size:12px; font-weight:800; color:#3a86ff; white-space:nowrap; }
+
+  /* ===== 底部提示 ===== */
+  #hint { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); z-index:18;
+          padding:10px 22px; font-size:14px; font-weight:700; color:#1e3a8a; border-radius:999px;
+          box-shadow:0 6px 20px rgba(30,64,175,.15); max-width:72vw; text-align:center;
+          background:rgba(255,255,255,.92); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.8); }
+
+  /* ===== Toast ===== */
+  #toasts { position:fixed; left:50%; bottom:74px; transform:translateX(-50%); z-index:30;
+            display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none; }
+  .toast { padding:11px 20px; border-radius:13px; font-size:14px; font-weight:700; max-width:70vw;
+           box-shadow:0 8px 26px rgba(15,23,42,.18); animation:toastIn .3s cubic-bezier(.2,1.4,.4,1);
+           text-align:center; line-height:1.5; }
+  .toast.info    { background:#eff6ff; color:#1d4ed8; border:1.5px solid #bfdbfe; }
+  .toast.success { background:#ecfdf5; color:#047857; border:1.5px solid #a7f3d0; }
+  .toast.warn    { background:#fffbeb; color:#b45309; border:1.5px solid #fde68a; }
+  .toast.error   { background:#fef2f2; color:#b91c1c; border:1.5px solid #fecaca; }
+  .toast.out { animation:toastOut .3s forwards; }
+  @keyframes toastIn { from { opacity:0; transform:translateY(16px) scale(.9);} to { opacity:1; transform:none;} }
+  @keyframes toastOut { to { opacity:0; transform:translateY(-10px) scale(.94);} }
+
+  /* ===== 帮助弹窗 ===== */
+  #help-mask { position:fixed; inset:0; z-index:40; background:rgba(15,23,42,.45); display:none;
+               align-items:center; justify-content:center; backdrop-filter:blur(3px); }
+  #help-mask.show { display:flex; }
+  #help-box { width:min(560px,92vw); max-height:84vh; overflow-y:auto; padding:26px 30px; }
+  #help-box h2 { color:#1e3a8a; font-size:20px; margin-bottom:14px; }
+  #help-box h4 { color:#0f172a; font-size:14.5px; margin:14px 0 6px; }
+  #help-box p, #help-box li { font-size:13.5px; color:#475569; line-height:1.8; }
+  #help-box ol { padding-left:20px; }
+  #help-close { margin-top:18px; background:#3a86ff; color:#fff; }
+  kbd { background:#eef2ff; border-radius:6px; padding:1px 7px; font-size:12px; color:#3730a3; font-weight:700; }
+
+  #panel-toggle { position:fixed; right:14px; bottom:16px; z-index:25; width:46px; height:46px;
+                  border-radius:50%; font-size:20px; box-shadow:0 6px 18px rgba(30,64,175,.3); }
+  @media (max-width:900px) {
+    #panel { top:auto; max-height:62vh; }
+    #topbar .subtitle { display:none; }
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<!-- 顶栏 -->
+<header id="topbar" class="card">
+  <div>
+    <div class="title">📦 长方体纸盒剪开 · 展开图</div>
+    <div class="subtitle">小学数学三年级上册 · 动态演示课件（拖拽旋转 / 滚轮缩放）</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="mode-group">
+    <button class="mode-btn active" data-mode="cut">✂️ 剪棱</button>
+    <button class="mode-btn" data-mode="unfold">🖐 展开/折叠</button>
+    <button class="mode-btn" data-mode="count">🔢 数棱</button>
+  </div>
+  <button class="icon-btn" id="btnCamera" title="视角复位">⛶</button>
+  <button class="icon-btn" id="btnHelp" title="使用说明">❓</button>
+</header>
+
+<!-- 右侧面板 -->
+<aside id="panel">
+  <section class="card">
+    <h3>🎬 预设展开方案</h3>
+    <button class="btn btn-preset" data-preset="0">方案一 · 十字形</button>
+    <button class="btn btn-preset" data-preset="1">方案二 · 一字形</button>
+    <button class="btn btn-preset" data-preset="2">方案三 · 阶梯形</button>
+    <p class="tip">自动演示"剪 7 条棱 → 逐步展开"的完整过程。</p>
+  </section>
+
+  <section class="card">
+    <h3>🧰 操作</h3>
+    <div class="grid2">
+      <button class="btn btn-op" id="btnUnfoldAll">一键展开</button>
+      <button class="btn btn-op" id="btnFoldAll">一键折起</button>
+      <button class="btn btn-op" id="btnUndo">↩ 撤销</button>
+      <button class="btn btn-warn" id="btnReset">⟲ 重置</button>
+    </div>
+    <div id="progress-wrap" style="margin-top:12px;">
+      <div id="progress-bar"><div id="progress-fill"></div></div>
+      <div id="progress-text">已剪 0/7</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>👁 显示开关</h3>
+    <label class="chk-row"><input type="checkbox" id="chkNames"> 显示面名称（上/底/前/后/左/右）</label>
+    <label class="chk-row"><input type="checkbox" id="chkRotate"> 自动旋转展示</label>
+    <label class="chk-row"><input type="checkbox" id="chkSound" checked> 音效</label>
+  </section>
+
+  <section class="card">
+    <h3>📐 纸盒尺寸</h3>
+    <div class="slider-row">
+      <span class="slider-name" style="color:#e63946">长</span>
+      <input type="range" id="sldA" min="1" max="10" step="1" value="3">
+      <b id="valA">3</b>
+    </div>
+    <div class="slider-row">
+      <span class="slider-name" style="color:#1d9bf0">宽</span>
+      <input type="range" id="sldB" min="1" max="10" step="1" value="2">
+      <b id="valB">2</b>
+    </div>
+    <div class="slider-row">
+      <span class="slider-name" style="color:#f77f00">高</span>
+      <input type="range" id="sldH" min="1" max="10" step="1" value="1">
+      <b id="valH">1</b>
+    </div>
+    <p class="tip">拖动拉杆实时改变纸盒（1~10），三个值相等时就是正方体。</p>
+  </section>
+</aside>
+<button class="icon-btn" id="panel-toggle">📋</button>
+
+<div id="hint">✂️ 点击发光的蓝色棱线，把纸盒剪开吧！</div>
+<div id="toasts"></div>
+
+<!-- 帮助 -->
+<div id="help-mask">
+  <div id="help-box" class="card">
+    <h2>📦 使用说明</h2>
+    <p>把一个长方体纸盒沿棱剪开，摊平后就得到它的<b>展开图</b>。长方体有 12 条棱，要剪开 <b>7 条</b>，留下 5 条作为"折痕"把 6 个面连在一起。</p>
+    <h4>🎬 推荐上课流程</h4>
+    <ol>
+      <li>先点 <b>预设方案</b>，完整看一遍"剪开 → 展开"。</li>
+      <li>点 <b>⟲ 重置</b>，让学生上台用 <b>✂️ 剪棱</b> 模式自己动手剪。</li>
+      <li>剪错没关系：剪法会<b>智能判断</b>，会把面剪掉的剪法会被阻止。</li>
+      <li>剪的过程中，只靠折痕连着的面会<b>顺势自动摊开</b>；也可以切到 <b>🖐 展开/折叠</b>，点击面手动摊开 / 折回去。</li>
+      <li>用 <b>🔢 数棱</b> 带学生一起数 12 条棱；拖动<b>长 / 宽 / 高拉杆</b>换不同的纸盒再挑战。</li>
+    </ol>
+    <h4>🖱 鼠标操作</h4>
+    <p>左键拖拽：旋转视角　·　滚轮：缩放　·　右键拖拽：平移　·　<kbd>Ctrl/⌘ + Z</kbd>：撤销</p>
+    <h4>💡 小知识</h4>
+    <p>· 相对的两个面颜色相同（上-底、前-后、左-右）。<br>· 长方体（含正方体）共有 <b>11 种</b>不同的展开图。<br>· 完全展开后可以观察：表面积 = 展开图的面积。</p>
+    <button class="btn" id="help-close">知道啦，开始上课！</button>
+  </div>
+</div>
+
+<script src="./vendor/three.min.js?v=umd1"></script>
+<script src="./vendor/addons/controls/OrbitControls.js?v=umd1"></script>
+<script src="./vendor/addons/geometries/RoundedBoxGeometry.js?v=umd1"></script>
+
+<script>
+/* ================================================================
+ * 基础数据：6 个面、12 条棱
+ * 坐标系：x=长(a)  y=高(h)  z=宽(b)
+ * ================================================================ */
+const ROOT = 'D'; // 底面固定不动，作为展开基准面
+const FACE_IDS = ['U','D','F','B','L','R'];
+const FACES = {
+  U: { name:'上', color:0xffd166, normal:[ 0, 1, 0], xAxis:[1,0,0], yAxis:[0,0,-1], opp:'D' },
+  D: { name:'底', color:0xffd166, normal:[ 0,-1, 0], xAxis:[1,0,0], yAxis:[0,0, 1], opp:'U' },
+  F: { name:'前', color:0x06d6a0, normal:[ 0, 0, 1], xAxis:[1,0,0], yAxis:[0,1, 0], opp:'B' },
+  B: { name:'后', color:0x06d6a0, normal:[ 0, 0,-1], xAxis:[-1,0,0], yAxis:[0,1,0], opp:'F' },
+  L: { name:'左', color:0x8ecae6, normal:[-1, 0, 0], xAxis:[0,0,1], yAxis:[0,1, 0], opp:'R' },
+  R: { name:'右', color:0x8ecae6, normal:[ 1, 0, 0], xAxis:[0,0,-1], yAxis:[0,1,0], opp:'L' },
+};
+const EDGE_PAIRS = [['U','F'],['U','B'],['U','L'],['U','R'],
+                    ['D','F'],['D','B'],['D','L'],['D','R'],
+                    ['F','L'],['F','R'],['B','L'],['B','R']];
+const eid = (i,j)=>[i,j].sort().join('|');
+const ALL_EDGES = EDGE_PAIRS.map(([i,j])=>eid(i,j));
+const EDGE_FACES = {}; EDGE_PAIRS.forEach(([i,j])=>EDGE_FACES[eid(i,j)]=[i,j]);
+
+// 尺寸：长a(x) 宽b(z) 高h(y)
+let dims = { a:3, b:2, h:1 };
+
+// 预设方案（保留的 5 条折痕，其余 7 条剪开）
+const PRESETS = [
+  { name:'十字形', hinges:['F|U','D|F','F|L','F|R','B|R'] },
+  { name:'一字形', hinges:['F|L','F|R','B|R','R|U','D|F'] },
+  { name:'阶梯形', hinges:['F|U','F|R','B|R','B|D','D|L'] },
+];
+
+/* ================================================================
+ * 全局状态
+ * ================================================================ */
+let state;
+function freshState(){
+  const t = {}; ALL_EDGES.forEach(e=>t[e]=1); // 1=合拢(盒子) 0=摊平
+  return { uncut:new Set(ALL_EDGES), t, counted:[], mode:'cut',
+           history:[], busy:false, showNames:false,
+           sound:true, celebrated:false };
+}
+state = freshState();
+
+/* ================================================================
+ * 轻量补间动画
+ * ================================================================ */
+const tweens = [];
+const easeInOut = k => k<.5 ? 4*k*k*k : 1-Math.pow(-2*k+2,3)/2;
+const easeOutBack = k => { const c=1.70158; return 1+(c+1)*Math.pow(k-1,3)+c*Math.pow(k-1,2); };
+function tween({dur=600, delay=0, ease=easeInOut, update, done}){
+  tweens.push({t0:performance.now()+delay, dur, ease, update, done});
+}
+function stepTweens(now){
+  // 正序遍历：保证同一帧内多个补间按调度顺序触发（后台标签恢复时不会乱序）
+  for(let i=0;i<tweens.length;i++){
+    const tw=tweens[i];
+    if(now<tw.t0) continue;
+    let k=(now-tw.t0)/tw.dur; if(k>1)k=1;
+    tw.update && tw.update(tw.ease(k));
+    if(k===1){ tweens.splice(i,1); i--; tw.done && tw.done(); }
+  }
+}
+
+/* ================================================================
+ * 音效（WebAudio 合成，无外部资源）
+ * ================================================================ */
+let actx=null;
+function ac(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); return actx; }
+function blip(freq,dur=0.08,type='sine',gain=0.12,when=0,slideTo=null){
+  if(!state.sound) return;
+  try{
+    const c=ac(), o=c.createOscillator(), g=c.createGain(), t0=c.currentTime+when;
+    o.type=type; o.frequency.setValueAtTime(freq,t0);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,t0+dur);
+    g.gain.setValueAtTime(gain,t0); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+    o.connect(g).connect(c.destination); o.start(t0); o.stop(t0+dur+0.02);
+  }catch(e){}
+}
+const sfx = {
+  cut(){ blip(900,0.05,'square',0.08); blip(500,0.07,'square',0.08,0.05); },
+  unfold(){ blip(280,0.28,'sine',0.10,0,620); },
+  fold(){ blip(620,0.24,'sine',0.09,0,300); },
+  error(){ blip(140,0.18,'sawtooth',0.10); blip(110,0.2,'sawtooth',0.10,0.12); },
+  ok(){ [523,659,784].forEach((f,i)=>blip(f,0.14,'triangle',0.10,i*0.09)); },
+  count(n){ blip(440+n*40,0.1,'triangle',0.12); },
+};
+
+/* ================================================================
+ * Three.js 场景
+ * ================================================================ */
+const stage = document.getElementById('stage');
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, 0.1, 200);
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+stage.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 3; controls.maxDistance = 30;
+controls.maxPolarAngle = Math.PI*0.56;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xbcd4e6, 1.05));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(6,10,7); sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-15; sun.shadow.camera.right=15;
+sun.shadow.camera.top=15; sun.shadow.camera.bottom=-15;
+sun.shadow.bias = -0.0004;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xcfe8ff, 0.35);
+fill.position.set(-6,4,-6); scene.add(fill);
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(80,80),
+  new THREE.ShadowMaterial({ opacity:0.16 })
+);
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true;
+scene.add(ground);
+
+// 剪刀光点：预设演示时沿棱划过，模拟剪刀剪开的效果
+const scissorDot=new THREE.Mesh(
+  new THREE.SphereGeometry(0.09,20,20),
+  new THREE.MeshBasicMaterial({color:0xfff3c4})
+);
+scissorDot.add(new THREE.Mesh( // 外层橙色光晕
+  new THREE.SphereGeometry(0.18,20,20),
+  new THREE.MeshBasicMaterial({color:0xffb020,transparent:true,opacity:0.32,depthWrite:false})
+));
+scissorDot.visible=false; scene.add(scissorDot);
+
+/* ================================================================
+ * 文字精灵（canvas 贴图）
+ * ================================================================ */
+function roundRect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function makeSprite(text,{fg='#1f2d3d',bg='rgba(255,255,255,0.94)',size=0.5,circle=false,border=null}={}){
+  const fs=72, pad=26;
+  const cv=document.createElement('canvas'); let ctx=cv.getContext('2d');
+  ctx.font=`800 ${fs}px 'PingFang SC','Microsoft YaHei',sans-serif`;
+  const tw=Math.ceil(ctx.measureText(text).width);
+  const w= circle? fs+pad*1.4 : tw+pad*2, h=fs+pad*1.4;
+  cv.width=w*2; cv.height=h*2; ctx=cv.getContext('2d'); ctx.scale(2,2);
+  if(circle){ ctx.beginPath(); ctx.arc(w/2,h/2,Math.min(w,h)/2-3,0,7); ctx.fillStyle=bg; ctx.fill();
+    if(border){ ctx.lineWidth=5; ctx.strokeStyle=border; ctx.stroke(); } }
+  else { roundRect(ctx,2,2,w-4,h-4,(h-4)/2.4); ctx.fillStyle=bg; ctx.fill();
+    if(border){ ctx.lineWidth=4; ctx.strokeStyle=border; ctx.stroke(); } }
+  ctx.font=`800 ${fs}px 'PingFang SC','Microsoft YaHei',sans-serif`;
+  ctx.fillStyle=fg; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(text,w/2,h/2+3);
+  const tex=new THREE.CanvasTexture(cv); tex.colorSpace=THREE.SRGBColorSpace; tex.anisotropy=4;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true}));
+  sp.scale.set(size*w/h, size, 1);
+  sp.userData.aspect=w/h; // 贴图宽高比（屏幕等大缩放用）
+  return sp;
+}
+
+/* ================================================================
+ * 几何预计算：闭合位姿 / 铰链数据
+ * ================================================================ */
+const boxGroup = new THREE.Group(); scene.add(boxGroup);
+let closedT={}, closedQ={}, closedC={};      // 闭合位姿
+let hingeData={};                            // hingeData[edge][parent] = {m_l,u_l,delta,flatRel}
+let edgeLocal={};                            // edgeLocal[edge][face]  = {m_l,u_l}
+let edgeLen={};
+let faceGroups={}, faceMeshes={}, faceMats={}, nameSprites={};
+let rodPivot={}, rodMesh={}, rodHitbox={}, badgeAnchor={};
+let parents={}, parentEdge={}, bfsOrder=[], bridges=new Set();
+let labelPairs=[];   // 双面标签对：{face, pos, neg, on} 按相机朝向只显示一面
+let edgeOwner={};
+const worldT={}; FACE_IDS.forEach(f=>worldT[f]=new THREE.Matrix4());
+
+const v3 = a=>new THREE.Vector3(a[0],a[1],a[2]);
+function faceSize(f){ const {a,b,h}=dims;
+  return (f==='U'||f==='D') ? [a,b] : (f==='F'||f==='B') ? [a,h] : [b,h]; }
+
+function hingeRot(m,u,angle){
+  return new THREE.Matrix4().makeTranslation(m.x,m.y,m.z)
+    .multiply(new THREE.Matrix4().makeRotationAxis(u,angle))
+    .multiply(new THREE.Matrix4().makeTranslation(-m.x,-m.y,-m.z));
+}
+
+function computeClosedPoses(){
+  closedT={}; closedQ={}; closedC={};
+  const {a,b,h}=dims;
+  const center={ U:[0,h/2,0], D:[0,-h/2,0], F:[0,0,b/2], B:[0,0,-b/2], L:[-a/2,0,0], R:[a/2,0,0] };
+  for(const f of FACE_IDS){
+    const F=FACES[f];
+    const basis=new THREE.Matrix4().makeBasis(v3(F.xAxis),v3(F.yAxis),v3(F.normal));
+    const q=new THREE.Quaternion().setFromRotationMatrix(basis);
+    const c=v3(center[f]);
+    closedQ[f]=q; closedC[f]=c;
+    closedT[f]=new THREE.Matrix4().compose(c,q,new THREE.Vector3(1,1,1));
+  }
+}
+
+function computeHingeData(){
+  hingeData={}; edgeLocal={}; edgeLen={};
+  const Z=new THREE.Vector3(0,0,1);
+  const half={ x:dims.a/2, y:dims.h/2, z:dims.b/2 };
+  for(const e of ALL_EDGES){
+    const [i,j]=EDGE_FACES[e];
+    const ni=v3(FACES[i].normal), nj=v3(FACES[j].normal);
+    const m=new THREE.Vector3(
+      ni.x*half.x+nj.x*half.x, ni.y*half.y+nj.y*half.y, ni.z*half.z+nj.z*half.z);
+    const u=new THREE.Vector3().crossVectors(ni,nj).normalize();
+    edgeLen[e]=Math.abs(u.x)*dims.a+Math.abs(u.y)*dims.h+Math.abs(u.z)*dims.b;
+    hingeData[e]={}; edgeLocal[e]={};
+    for(const [P,C] of [[i,j],[j,i]]){
+      const qInv=closedQ[P].clone().invert();
+      const m_l=m.clone().sub(closedC[P]).applyQuaternion(qInv);
+      const u_l=u.clone().applyQuaternion(qInv).normalize();
+      const nC_l=v3(FACES[C].normal).applyQuaternion(qInv);
+      const delta=Math.atan2(new THREE.Vector3().crossVectors(Z,nC_l).dot(u_l), Z.dot(nC_l));
+      const relClosed=closedT[P].clone().invert().multiply(closedT[C]);
+      const flatRel=hingeRot(m_l,u_l,-delta).multiply(relClosed);
+      hingeData[e][P]={m_l,u_l,delta,flatRel};
+    }
+    for(const f of [i,j]){
+      const qInv=closedQ[f].clone().invert();
+      edgeLocal[e][f]={ m_l:m.clone().sub(closedC[f]).applyQuaternion(qInv),
+                        u_l:u.clone().applyQuaternion(qInv).normalize() };
+    }
+  }
+}
+
+/* ================================================================
+ * 搭建纸盒（换尺寸时重建）
+ * ================================================================ */
+const rodGeoCache={}, thinGeoCache={};
+function rodGeos(len){
+  const k=len.toFixed(3);
+  if(!rodGeoCache[k]) rodGeoCache[k]=new THREE.CylinderGeometry(0.05,0.05,len,10,1,true);
+  if(!thinGeoCache[k]) thinGeoCache[k]=new THREE.CylinderGeometry(0.026,0.026,len,8,1,true);
+  return { fat:rodGeoCache[k], thin:thinGeoCache[k] };
+}
+const hitGeoCache={};
+function hitGeo(len){ const k=len.toFixed(3);
+  if(!hitGeoCache[k]) hitGeoCache[k]=new THREE.CylinderGeometry(0.2,0.2,len,6,1,true);
+  return hitGeoCache[k]; }
+
+function buildBox(){
+  // 清空旧内容
+  while(boxGroup.children.length){
+    const g=boxGroup.children.pop();
+    g.traverse(o=>{ if(o.geometry && !Object.values(rodGeoCache).includes(o.geometry)
+                    && !Object.values(thinGeoCache).includes(o.geometry)
+                    && !Object.values(hitGeoCache).includes(o.geometry)) o.geometry.dispose();
+                    if(o.material && o.material.map) o.material.map.dispose(); });
+  }
+  faceGroups={}; faceMeshes={}; faceMats={}; nameSprites={};
+  rodPivot={}; rodMesh={}; rodHitbox={}; badgeAnchor={}; labelPairs=[]; edgeOwner={};
+  computeClosedPoses(); computeHingeData();
+
+  const T=0.07; // 纸板厚度
+  for(const f of FACE_IDS){
+    const [sx,sy]=faceSize(f);
+    const g=new THREE.Group(); g.matrixAutoUpdate=false;
+    const mat=new THREE.MeshStandardMaterial({ color:FACES[f].color, roughness:0.62, metalness:0.04 });
+    const mesh=new THREE.Mesh(new THREE.RoundedBoxGeometry(sx,sy,T,2,0.028), mat);
+    mesh.castShadow=true; mesh.receiveShadow=true; mesh.userData.face=f;
+    g.add(mesh);
+    // 面名精灵（正反两面各一张：合拢时看外侧，展开铺平后看内侧）
+    // 屏幕等大：尺寸在 updateLabels 中按相机距离每帧换算，六个面名永远一样大，
+    // 不随拉杆调尺寸、视角缩放而变化（size 仅作首帧占位）
+    const ns=makeSprite(FACES[f].name,{size:0.5,fg:'#ffffff',bg:'rgba(30,41,59,0.55)'});
+    ns.position.set(0,0,T/2+0.36); ns.visible=false; ns.userData.screenFixed=true; g.add(ns);
+    const ns2=makeSprite(FACES[f].name,{size:0.5,fg:'#ffffff',bg:'rgba(30,41,59,0.55)'});
+    ns2.position.set(0,0,-T/2-0.36); ns2.visible=false; ns2.userData.screenFixed=true; g.add(ns2);
+    nameSprites[f]=[ns,ns2];
+    labelPairs.push({face:f, pos:ns, neg:ns2, on:()=>state.showNames});
+    faceGroups[f]=g; faceMeshes[f]=mesh; faceMats[f]=mat;
+    boxGroup.add(g);
+  }
+
+  // 12 条棱的"棱杆"（蓝=可剪，橙=折痕，灰=已剪开）
+  for(const e of ALL_EDGES){
+    const len=edgeLen[e];
+    const pivot=new THREE.Group();
+    const mesh=new THREE.Mesh(rodGeos(len).fat,
+      new THREE.MeshStandardMaterial({color:0x3a86ff,roughness:0.4,emissive:0x3a86ff,emissiveIntensity:0.5}));
+    mesh.castShadow=true;
+    const hit=new THREE.Mesh(hitGeo(len),
+      new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
+    hit.userData.edge=e;
+    pivot.add(mesh); pivot.add(hit);
+    rodPivot[e]=pivot; rodMesh[e]=mesh; rodHitbox[e]=hit;
+    const ba=new THREE.Group(); badgeAnchor[e]=ba; // 数字徽章挂点
+  }
+  ground.position.y = -dims.h/2 - 0.5;
+  rebuildTopology();
+  applyVisualState();
+  updateStats();
+}
+
+/* ================================================================
+ * 拓扑：父子层级 / 桥边（剪断会分离的关键棱）
+ * ================================================================ */
+function adjacency(except=null){
+  const adj={}; FACE_IDS.forEach(f=>adj[f]=[]);
+  for(const e of state.uncut){ if(e===except) continue;
+    const [i,j]=EDGE_FACES[e]; adj[i].push(j); adj[j].push(i); }
+  return adj;
+}
+function connectedWithout(edge){
+  const adj=adjacency(edge), seen=new Set([ROOT]), q=[ROOT];
+  while(q.length){ const c=q.shift();
+    for(const n of adj[c]) if(!seen.has(n)){ seen.add(n); q.push(n); } }
+  return seen.size===6;
+}
+function orphanComponent(edge){ // 剪掉 edge 后不包含 ROOT 的那一侧
+  const [i,j]=EDGE_FACES[edge];
+  const adj=adjacency(edge), start=adj[i].length? i : j;
+  const seen=new Set([i]), q=[i];
+  while(q.length){ const c=q.shift();
+    for(const n of adj[c]) if(!seen.has(n)){ seen.add(n); q.push(n); } }
+  if(seen.has(ROOT)){ const out=FACE_IDS.filter(f=>!seen.has(f)); return out; }
+  return [...seen];
+}
+function rebuildTopology(){
+  // BFS 父子关系
+  parents={}; parentEdge={}; bfsOrder=[ROOT];
+  const adj=adjacency(), q=[ROOT], seen=new Set([ROOT]);
+  while(q.length){ const c=q.shift();
+    for(const n of adj[c]) if(!seen.has(n)){
+      seen.add(n); parents[n]=c; q.push(n); bfsOrder.push(n);
+      parentEdge[n]=eid(c,n);
+    } }
+  // 桥边集合
+  bridges=new Set();
+  for(const e of state.uncut) if(!connectedWithout(e)) bridges.add(e);
+  // 棱杆挂到"子面"一侧，随子树运动
+  for(const e of ALL_EDGES){
+    const [i,j]=EDGE_FACES[e];
+    let owner;
+    if(parentEdge[j]===e) owner=j; else if(parentEdge[i]===e) owner=i;
+    else owner=(FACE_IDS.indexOf(i)<FACE_IDS.indexOf(j))? i : j;
+    edgeOwner[e]=owner;
+    const el=edgeLocal[e][owner];
+    faceGroups[owner].add(rodPivot[e]);
+    rodPivot[e].position.copy(el.m_l);
+    rodPivot[e].quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), el.u_l);
+    faceGroups[owner].add(badgeAnchor[e]);
+    badgeAnchor[e].position.copy(el.m_l); // 徽章在面的正反两侧各显示一个
+    badgeAnchor[e].quaternion.identity();
+  }
+}
+
+/* ================================================================
+ * 每帧更新面变换
+ * ================================================================ */
+function updateTransforms(){
+  worldT[ROOT].copy(closedT[ROOT]);
+  for(const f of bfsOrder){
+    if(f===ROOT) continue;
+    const P=parents[f], e=parentEdge[f], hd=hingeData[e][P];
+    const M=hingeRot(hd.m_l,hd.u_l, state.t[e]*hd.delta).multiply(hd.flatRel);
+    worldT[f].copy(worldT[P]).multiply(M);
+  }
+  for(const f of FACE_IDS){ faceGroups[f].matrix.copy(worldT[f]); faceGroups[f].matrixWorldNeedsUpdate=true; }
+}
+
+/* ================================================================
+ * 展开图重叠检测（智能判断"剪法是否合理"）
+ * ================================================================ */
+function flatRects(){
+  const T={}; T[ROOT]=closedT[ROOT].clone();
+  const inv=closedT[ROOT].clone().invert(); const rects={};
+  for(const f of bfsOrder){
+    if(f!==ROOT){ const P=parents[f], e=parentEdge[f];
+      T[f]=T[P].clone().multiply(hingeData[e][P].flatRel); }
+    const [sx,sy]=faceSize(f); const pts=[];
+    for(const [cx,cy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
+      const p=new THREE.Vector3(cx*sx/2,cy*sy/2,0).applyMatrix4(T[f]).applyMatrix4(inv);
+      pts.push([p.x,p.y]);
+    }
+    rects[f]=pts;
+  }
+  return rects;
+}
+function netsOverlap(){
+  const rects=flatRects(), eps=1e-3;
+  const snap=v=>Math.round(v/eps)*eps;
+  const xs=new Set(), ys=new Set();
+  for(const f of FACE_IDS) for(const [x,y] of rects[f]){ xs.add(snap(x)); ys.add(snap(y)); }
+  const X=[...xs].sort((p,q)=>p-q), Y=[...ys].sort((p,q)=>p-q);
+  const box={}; for(const f of FACE_IDS){
+    const px=rects[f].map(p=>snap(p[0])), py=rects[f].map(p=>snap(p[1]));
+    box[f]={x0:Math.min(...px),x1:Math.max(...px),y0:Math.min(...py),y1:Math.max(...py)};
+  }
+  for(let xi=0;xi<X.length-1;xi++) for(let yi=0;yi<Y.length-1;yi++){
+    const cx=(X[xi]+X[xi+1])/2, cy=(Y[yi]+Y[yi+1])/2; let n=0;
+    for(const f of FACE_IDS){ const b=box[f];
+      if(cx>b.x0+1e-6&&cx<b.x1-1e-6&&cy>b.y0+1e-6&&cy<b.y1-1e-6) n++; }
+    if(n>=2) return true;
+  }
+  return false;
+}
+
+/* ================================================================
+ * 历史（撤销）
+ * ================================================================ */
+function snapshot(){ return { uncut:[...state.uncut], t:{...state.t},
+  counted:[...state.counted], mode:state.mode }; }
+function pushHistory(){ state.history.push(snapshot()); if(state.history.length>60) state.history.shift(); }
+function applySnapshot(s){
+  state.uncut=new Set(s.uncut); state.t={...s.t}; state.counted=[...s.counted];
+  setMode(s.mode); state.celebrated=false;
+  rebuildTopology(); refreshBadges(); applyVisualState(); updateStats();
+}
+
+/* ================================================================
+ * 视觉状态刷新
+ * ================================================================ */
+function applyVisualState(){
+  for(const e of ALL_EDGES){
+    const mesh=rodMesh[e], uncut=state.uncut.has(e);
+    const len=edgeLen[e], {fat,thin}=rodGeos(len);
+    if(uncut){
+      mesh.geometry=fat; mesh.visible=true;
+      if(bridges.has(e)){ mesh.material.color.set(0xff9f1c); mesh.material.emissive.set(0xff9f1c); }
+      else { mesh.material.color.set(0x3a86ff); mesh.material.emissive.set(0x3a86ff); }
+    } else {
+      mesh.geometry=thin; mesh.visible=true;
+      mesh.material.color.set(0xa8b2c1); mesh.material.emissive.set(0x000000);
+      mesh.material.emissiveIntensity=0;
+    }
+  }
+}
+function refreshBadges(){
+  for(const e of ALL_EDGES){
+    const ba=badgeAnchor[e];
+    while(ba.children.length){ const c=ba.children.pop();
+      c.material.map.dispose(); c.material.dispose(); }
+  }
+  labelPairs=labelPairs.filter(p=>!p.badge);
+  state.counted.forEach((e,idx)=>{
+    let pos=null, neg=null;
+    for(const z of [0.27,-0.27]){
+      const sp=makeSprite(String(idx+1),{size:0.4,fg:'#ffffff',bg:'#e63946',circle:true,border:'#ffffff'});
+      sp.position.set(0,0,z); badgeAnchor[e].add(sp);
+      if(z>0) pos=sp; else neg=sp;
+    }
+    labelPairs.push({face:edgeOwner[e], pos, neg, on:()=>true, badge:true});
+  });
+}
+
+/* ================================================================
+ * 动作：剪棱
+ * ================================================================ */
+function tryCut(e){
+  if(state.busy) return;
+  if(!state.uncut.has(e)) { toast('这条棱已经剪开啦','info'); return; }
+  if(state.uncut.size<=5){ toast('不能再剪了，6 个面要靠 5 条棱连在一起哦','warn'); sfx.error(); return; }
+  if(!connectedWithout(e)){ // 会把面剪下来 → 阻止
+    const orphan=orphanComponent(e);
+    const names=orphan.map(f=>'「'+FACES[f].name+'面」').join('');
+    toast(`✋ 不能剪这条棱！${names}会掉下来，展开图要保持 6 个面连在一起`,'error');
+    sfx.error(); flashFaces(orphan); return;
+  }
+  pushHistory();
+  state.busy=true; // 剪刀动画期间短暂锁定，避免连点
+  camFocus=rodPivot[e].getWorldPosition(new THREE.Vector3()); // 视线轻轻聚焦到这条棱（只移目标，不改距离）
+  tween({dur:1, delay:120, update:()=>{}, done:()=>{
+    swipeCut(e,260,()=>{ // 剪刀光点划过 → 真正剪断
+      doCut(e,true);
+      afterTopologyChange();
+      autoUnfoldFreeFaces();          // 能展开的面顺势自动摊开
+      const last=state.uncut.size===5;
+      tween({dur:1, delay:340, update:()=>{}, done:()=>{
+        camFocus=null; state.busy=false; // 视角交还几何中心
+        if(last){ // 剪够 7 条 → 判断剪法
+          if(netsOverlap()) toast('⚠️ 这种剪法摊平后会有面重叠，不是有效的展开图，点「撤销」换一条棱试试','warn',4200);
+          else toast('✅ 剪法正确！面会顺着折痕自动摊开～','success',4200);
+          setMode('unfold');
+        }
+      }});
+    });
+  }});
+}
+function doCut(e,animate){
+  state.uncut.delete(e);
+  state.counted=state.counted.filter(x=>x!==e); // 剪开的棱退出数棱
+  if(animate){
+    sfx.cut();
+    const mesh=rodMesh[e], m0=mesh.material;
+    m0.emissive.set(0xffffff);
+    tween({dur:220, update:k=>{ m0.emissiveIntensity=1.2*(1-k); mesh.scale.setScalar(1-k*0.9); },
+      done:()=>{ mesh.scale.setScalar(1); } });
+  }
+  rebuildTopology();
+}
+function afterTopologyChange(){ refreshBadges(); applyVisualState(); updateStats(); }
+
+/* 剪棱后：获得自由的面（铰链已成"桥"，只靠折痕连着）顺势自动展开 */
+function autoUnfoldFreeFaces(){
+  let d=120, opened=0;
+  for(const f of bfsOrder){
+    if(f===ROOT) continue;
+    const e=parentEdge[f];
+    if(!e || !state.uncut.has(e) || !bridges.has(e)) continue; // 还被其他棱拉着，掰不动
+    if(state.t[e]<=0.98 || animatingEdge.has(e)) continue;     // 已经摊开或正在摊
+    animateHinge(e,0,620,d); d+=150; opened++;
+  }
+  return opened;
+}
+
+/* ================================================================
+ * 动作：展开 / 折叠某个面
+ * ================================================================ */
+const animatingEdge=new Set();
+let timeScale=1; // 动画时长倍率：预设演示用 2（0.5x 倍速），方便三年级学生看清
+function tryToggleFace(f){
+  if(state.busy) return;
+  if(f===ROOT){ toast('底面是固定的基准面，点击其他面试试','info'); return; }
+  const e=parentEdge[f];
+  if(!e || !state.uncut.has(e)){ toast('这个面还被粘着，先去剪开它周围的蓝色棱','warn'); sfx.error(); return; }
+  if(animatingEdge.has(e)) return;
+  if(!bridges.has(e)){ // 铰链还在环里，物理上掰不动
+    const others=[...state.uncut].filter(x=>x!==e && EDGE_FACES[x].includes(f));
+    toast(`「${FACES[f].name}面」还被其他棱连着呢，先剪开闪烁的蓝棱`,'warn');
+    sfx.error(); pulseEdges([...state.uncut].filter(x=>EDGE_FACES[x].includes(f)&&!bridges.has(x)));
+    return;
+  }
+  pushHistory();
+  animateHinge(e, state.t[e]>0.5 ? 0 : 1);
+}
+function animateHinge(e,target,dur=640,delay=0){
+  if(animatingEdge.has(e)) return; // 正在动，避免重复补间打架
+  const from=state.t[e]; animatingEdge.add(e);
+  if(target===0) sfx.unfold(); else sfx.fold();
+  tween({dur:dur*timeScale, delay:delay*timeScale, update:k=>{ state.t[e]=from+(target-from)*k; },
+    done:()=>{ animatingEdge.delete(e); checkFullyUnfolded(); } });
+}
+function checkFullyUnfolded(){
+  if(state.uncut.size===5 && [...state.uncut].every(e=>state.t[e]<0.02) && !state.celebrated){
+    state.celebrated=true;
+    if(netsOverlap()){ toast('⚠️ 展开后发现有面重叠了，这种剪法不对哦，点「撤销」换种剪法','warn',4500); sfx.error(); }
+    else{
+      sfx.ok();
+      toast('🎉 展开成功！6 个面全部摊平，这就是一种展开图','success',5000);
+      fitToNet(1000);
+    }
+  }
+}
+function fitToNet(dur=900){ // 拉远相机让整个展开图进入视野
+  const box=new THREE.Box3(), corner=new THREE.Vector3();
+  for(const f of FACE_IDS){ const [sx,sy]=faceSize(f);
+    for(const [cx,cy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
+      corner.set(cx*sx/2,cy*sy/2,0).applyMatrix4(worldT[f]); box.expandByPoint(corner); } }
+  const center=box.getCenter(new THREE.Vector3());
+  const sphere=box.getBoundingSphere(new THREE.Sphere());
+  const fovV=camera.fov*Math.PI/180, fovH=2*Math.atan(Math.tan(fovV/2)*camera.aspect);
+  const dist=sphere.radius/Math.sin(Math.min(fovV,fovH)/2)*1.08;
+  const dir=camera.position.clone().sub(controls.target).normalize();
+  const p0=camera.position.clone(), p1=center.clone().add(dir.multiplyScalar(dist));
+  tween({dur, update:k=>{ camera.position.lerpVectors(p0,p1,k); }}); // target 由主循环自动吸附几何中心
+}
+
+/* ================================================================
+ * 动作：一键展开 / 折起 / 重置 / 撤销 / 预设
+ * ================================================================ */
+function unfoldAll(){
+  if(state.busy) return;
+  if(state.uncut.size>5){ toast('还没剪够呢：先用「剪棱」剪开 7 条蓝棱，或点预设方案','warn'); sfx.error(); return; }
+  state.busy=true;
+  pushHistory();
+  let d=0;
+  for(const f of bfsOrder){ if(f===ROOT) continue;
+    const e=parentEdge[f]; if(state.t[e]>0.02){ animateHinge(e,0,620,d); d+=130; } }
+  tween({dur:1,delay:d+650,update:()=>{},done:()=>{state.busy=false;}});
+}
+function foldAll(){
+  if(state.busy) return;
+  state.busy=true; pushHistory(); state.celebrated=false;
+  let d=0;
+  for(const f of [...bfsOrder].reverse()){ if(f===ROOT) continue;
+    const e=parentEdge[f]; if(state.t[e]<0.98){ animateHinge(e,1,560,d); d+=110; } }
+  tween({dur:1,delay:d+600,update:()=>{},done:()=>{state.busy=false;}});
+}
+function resetAll(){
+  if(state.busy) return;
+  pushHistory();
+  const t={}; ALL_EDGES.forEach(e=>t[e]=1);
+  state.uncut=new Set(ALL_EDGES); state.t=t; state.counted=[]; state.celebrated=false;
+  setMode('cut'); rebuildTopology(); refreshBadges(); applyVisualState(); updateStats();
+  toast('已还原成长方体纸盒','info'); blip(500,0.12,'triangle',0.1);
+}
+function undo(){
+  if(state.busy) return;
+  const s=state.history.pop();
+  if(!s){ toast('没有可以撤销的步骤啦','info'); return; }
+  applySnapshot(s); blip(420,0.1,'triangle',0.09); toast('已撤销一步','info');
+}
+/* 预设演示运镜：聚焦到要剪的棱 + 剪刀光点划过 */
+let camFocus=null; // 演示期间的相机聚焦点（null=跟随几何中心）
+const _feMid=new THREE.Vector3(), _feDir=new THREE.Vector3();
+function focusOnEdge(e,dur){ // 相机目标移到棱中点，并推近到合适距离
+  rodPivot[e].getWorldPosition(_feMid);
+  camFocus=_feMid.clone();
+  _feDir.copy(camera.position).sub(controls.target).normalize();
+  const dist=Math.max(dims.a,dims.b,dims.h)*1.5+2.5; // 距离随盒子大小，不逐刀越推越近
+  const from=camera.position.clone(), to=_feMid.clone().addScaledVector(_feDir,dist);
+  tween({dur, update:k=>{ camera.position.lerpVectors(from,to,k); }});
+}
+const _swQ=new THREE.Quaternion(), _swU=new THREE.Vector3(), _swM=new THREE.Vector3();
+function swipeCut(e,dur,after){ // 发光"剪刀尖"沿棱从一端划到另一端
+  rodPivot[e].getWorldPosition(_swM);
+  rodPivot[e].getWorldQuaternion(_swQ);
+  _swU.set(0,1,0).applyQuaternion(_swQ);
+  const p0=_swM.clone().addScaledVector(_swU,-edgeLen[e]/2);
+  const p1=_swM.clone().addScaledVector(_swU, edgeLen[e]/2);
+  scissorDot.visible=true; scissorDot.position.copy(p0);
+  tween({dur, update:k=>{
+    scissorDot.position.lerpVectors(p0,p1,k);
+    scissorDot.scale.setScalar(1+0.4*Math.sin(k*Math.PI)); // 划到中间最亮
+  }, done:()=>{ scissorDot.visible=false; scissorDot.scale.setScalar(1); if(after)after(); }});
+}
+function applyPreset(idx){
+  if(state.busy) return;
+  pushHistory();
+  state.busy=true; controls.enabled=false; // 演示期间锁定视角操作，保证运镜连贯
+  const K=2; // 0.5x 倍速：铰链展开动画放慢一倍，方便三年级学生跟上
+  timeScale=K;
+  const keep=new Set(PRESETS[idx].hinges);
+  const toCut=ALL_EDGES.filter(e=>!keep.has(e));
+  // 先复位到完整盒子（不动画，瞬时）
+  const t={}; ALL_EDGES.forEach(e=>t[e]=1);
+  state.uncut=new Set(ALL_EDGES); state.t=t; state.counted=[]; state.celebrated=false;
+  setMode('cut'); rebuildTopology(); refreshBadges(); applyVisualState(); updateStats();
+  toast(`✂️ 演示「${PRESETS[idx].name}」：跟着小剪刀剪开 7 条棱`,'info');
+  // 每一刀的节奏：聚焦(520ms) → 剪刀划过(380ms) → 剪断闪光 → 停留看清(420ms)
+  const FOCUS=520, SWIPE=380, SETTLE=420, STEP=FOCUS+SWIPE+SETTLE;
+  toCut.forEach((e,i)=>{
+    const at=700+i*STEP;
+    tween({dur:1, delay:at, update:()=>{}, done:()=>focusOnEdge(e,FOCUS)});
+    tween({dur:1, delay:at+FOCUS, update:()=>{}, done:()=>swipeCut(e,SWIPE)});
+    tween({dur:1, delay:at+FOCUS+SWIPE, update:()=>{}, done:()=>{
+      doCut(e,true); applyVisualState(); updateStats();
+      autoUnfoldFreeFaces(); // 顺势展开已获得自由的面
+    }});
+  });
+  tween({dur:1, delay:700+toCut.length*STEP+300, update:()=>{}, done:()=>{
+    rebuildTopology(); applyVisualState();
+    toast('剪好啦！面会顺着折痕自动摊开 ✨','success');
+    camFocus=null; fitCamera(false); // 视角拉回，完整看展开图
+    autoUnfoldFreeFaces(); // 兜底：把剩余闭合的面摊开
+    setMode('unfold');
+    tween({dur:1,delay:1900*K,update:()=>{},done:()=>{ state.busy=false; timeScale=1; controls.enabled=true; updateStats(); }});
+  }});
+}
+
+/* ================================================================
+ * 动作：数棱
+ * ================================================================ */
+function tryCount(e){
+  if(state.busy) return;
+  pushHistory();
+  const i=state.counted.indexOf(e);
+  if(i>=0){ state.counted.splice(i,1); blip(300,0.08,'triangle',0.08); }
+  else { state.counted.push(e); sfx.count(state.counted.length); }
+  refreshBadges(); updateStats();
+  if(state.counted.length===12) toast('🎉 数完啦！长方体一共有 12 条棱，其中 4 条长、4 条宽、4 条高','success',4200);
+}
+
+/* ================================================================
+ * 反馈动画
+ * ================================================================ */
+function flashFaces(faces){
+  for(const f of faces){ const m=faceMats[f];
+    m.emissive.set(0xff3b30);
+    tween({dur:700, update:k=>{ m.emissiveIntensity=0.9*(1-k); }, done:()=>{m.emissiveIntensity=0;}});
+  }
+}
+function pulseEdges(edges){
+  for(const e of edges){ const m=rodMesh[e].material;
+    tween({dur:900, update:k=>{ m.emissiveIntensity=0.5+1.4*Math.sin(k*Math.PI); },
+      done:()=>{ m.emissiveIntensity=0.5; }});
+  }
+}
+
+/* ================================================================
+ * 相机
+ * ================================================================ */
+function fitCamera(instant=false){
+  const maxDim=Math.max(dims.a,dims.b,dims.h);
+  const dist=maxDim*2.5+2.2;
+  const dir=new THREE.Vector3(0.62,0.5,0.78).normalize();
+  const pos=dir.multiplyScalar(dist);
+  if(instant){ camera.position.copy(pos); controls.target.set(0,0,0); }
+  else{
+    const p0=camera.position.clone();
+    tween({dur:800, update:k=>{ camera.position.lerpVectors(p0,pos,k); }});
+  }
+}
+
+/* ================================================================
+ * UI
+ * ================================================================ */
+const hintEl=document.getElementById('hint');
+function toast(msg,type='info',dur=3000){
+  const box=document.getElementById('toasts');
+  const el=document.createElement('div'); el.className='toast '+type; el.textContent=msg;
+  box.appendChild(el);
+  setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(),320); },dur);
+  while(box.children.length>3) box.firstChild.remove();
+}
+const HINTS={
+  cut:'✂️ 点击蓝棱剪开，能展开的面会顺势自动摊开（橙色折痕剪了面会掉）',
+  unfold:'🖐 点击一个面，沿折痕把它摊开 / 折回去',
+  count:'🔢 点击任意一条棱进行编号，再点一次取消',
+};
+function setMode(m){
+  state.mode=m;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+  updateHint();
+}
+function updateHint(){
+  if(state.mode==='cut') hintEl.textContent=HINTS.cut+`（已剪 ${12-state.uncut.size}/7）`;
+  else hintEl.textContent=HINTS[state.mode];
+}
+function updateStats(){
+  document.getElementById('progress-fill').style.width=`${Math.min(100,(12-state.uncut.size)/7*100)}%`;
+  document.getElementById('progress-text').textContent=`已剪 ${12-state.uncut.size}/7`;
+  document.getElementById('btnUndo').disabled=state.history.length===0;
+  updateHint();
+}
+
+// 模式切换
+document.querySelectorAll('.mode-btn').forEach(b=>b.onclick=()=>{ setMode(b.dataset.mode); blip(600,0.06,'triangle',0.07); });
+// 操作按钮
+document.getElementById('btnUnfoldAll').onclick=unfoldAll;
+document.getElementById('btnFoldAll').onclick=foldAll;
+document.getElementById('btnReset').onclick=resetAll;
+document.getElementById('btnUndo').onclick=undo;
+document.getElementById('btnCamera').onclick=()=>fitCamera(false);
+document.querySelectorAll('.btn-preset').forEach(b=>b.onclick=()=>applyPreset(+b.dataset.preset));
+// 开关
+document.getElementById('chkNames').onchange=e=>{ state.showNames=e.target.checked; blip(700,0.06,'triangle',0.06); };
+document.getElementById('chkRotate').onchange=e=>{ controls.autoRotate=e.target.checked; controls.autoRotateSpeed=1.4; };
+document.getElementById('chkSound').onchange=e=>{ state.sound=e.target.checked; };
+// 尺寸拉杆（1~10 实时调节）
+function applyDims(a,b,h){
+  dims={a,b,h}; state=freshState(); state.sound=document.getElementById('chkSound').checked;
+  state.showNames=document.getElementById('chkNames').checked;
+  buildBox(); fitCamera(true);
+}
+let dimRaf=0;
+[['sldA','valA','a'],['sldB','valB','b'],['sldH','valH','h']].forEach(([sid,vid,key])=>{
+  const sld=document.getElementById(sid), val=document.getElementById(vid);
+  sld.oninput=()=>{
+    if(state.busy || animatingEdge.size){ sld.value=dims[key]; val.textContent=dims[key]; toast('演示进行中，等面停稳再调尺寸哦','warn'); return; }
+    val.textContent=sld.value;
+    if(dimRaf) return; // 拖动期间按帧节流重建
+    dimRaf=requestAnimationFrame(()=>{
+      dimRaf=0; // 以三个拉杆的最新值为准，避免连拖时丢值
+      applyDims(+document.getElementById('sldA').value,
+                +document.getElementById('sldB').value,
+                +document.getElementById('sldH').value);
+    });
+  };
+});
+// 帮助
+document.getElementById('btnHelp').onclick=()=>document.getElementById('help-mask').classList.add('show');
+document.getElementById('help-close').onclick=()=>document.getElementById('help-mask').classList.remove('show');
+document.getElementById('help-mask').onclick=e=>{ if(e.target.id==='help-mask') e.target.classList.remove('show'); };
+// 侧边栏折叠（小屏默认收起）
+const panelEl=document.getElementById('panel'), panelBtn=document.getElementById('panel-toggle');
+function syncPanelBtn(){ panelBtn.textContent=panelEl.classList.contains('collapsed')?'📋':'✕';
+  panelBtn.title=panelEl.classList.contains('collapsed')?'展开侧边栏':'收起侧边栏'; }
+panelBtn.onclick=()=>{ panelEl.classList.toggle('collapsed'); syncPanelBtn(); blip(600,0.06,'triangle',0.06); };
+if(matchMedia('(max-width:900px)').matches) panelEl.classList.add('collapsed');
+syncPanelBtn();
+// 快捷键
+addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
+  if(e.key.toLowerCase()==='r'&&!e.ctrlKey&&!e.metaKey) resetAll();
+});
+
+/* ================================================================
+ * 鼠标拾取
+ * ================================================================ */
+const ray=new THREE.Raycaster(); const ndc=new THREE.Vector2();
+let downPos=null, hoverObj=null;
+renderer.domElement.addEventListener('pointerdown',e=>{ downPos=[e.clientX,e.clientY]; });
+renderer.domElement.addEventListener('pointerup',e=>{
+  if(!downPos) return;
+  const dx=e.clientX-downPos[0], dy=e.clientY-downPos[1]; downPos=null;
+  if(dx*dx+dy*dy>36) return; // 拖拽不算点击
+  pick(e.clientX,e.clientY,true);
+});
+renderer.domElement.addEventListener('pointermove',e=>pick(e.clientX,e.clientY,false));
+function pick(cx,cy,isClick){
+  ndc.set(cx/innerWidth*2-1, -(cy/innerHeight)*2+1);
+  ray.setFromCamera(ndc,camera);
+  let targets=[], handler=null;
+  if(state.mode==='cut'){ targets=ALL_EDGES.filter(e=>state.uncut.has(e)).map(e=>rodHitbox[e]);
+    handler=o=>tryCut(o.userData.edge); }
+  else if(state.mode==='count'){ targets=ALL_EDGES.map(e=>rodHitbox[e]);
+    handler=o=>tryCount(o.userData.edge); }
+  else { targets=FACE_IDS.map(f=>faceMeshes[f]); handler=o=>tryToggleFace(o.userData.face); }
+  const hits=ray.intersectObjects(targets,false);
+  const obj=hits.length?hits[0].object:null;
+  if(obj!==hoverObj){
+    hoverObj=obj;
+    renderer.domElement.style.cursor=obj?'pointer':'grab';
+    // 展开模式：悬停高亮相对面（同色成对）
+    if(state.mode==='unfold'){
+      FACE_IDS.forEach(f=>{ faceMats[f].emissive.set(0x000000); faceMats[f].emissiveIntensity=0; });
+      if(obj){ const f=obj.userData.face, opp=FACES[f].opp;
+        for(const x of [f,opp]){ faceMats[x].emissive.set(0x334155); faceMats[x].emissiveIntensity=0.35; } }
+    }
+  }
+  if(isClick&&obj&&handler) handler(obj);
+}
+
+/* ================================================================
+ * 主循环
+ * ================================================================ */
+const clock=new THREE.Clock();
+const _n=new THREE.Vector3(), _fp=new THREE.Vector3(), _tc=new THREE.Vector3();
+const _scBox=new THREE.Box3(), _scCorner=new THREE.Vector3(), _scCenter=new THREE.Vector3();
+function shapeCenter(){ // 当前形状（盒子或展开中的纸）的几何中心
+  _scBox.makeEmpty();
+  for(const f of FACE_IDS){ const [sx,sy]=faceSize(f);
+    for(const [cx,cy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
+      _scCorner.set(cx*sx/2, cy*sy/2, 0).applyMatrix4(worldT[f]); _scBox.expandByPoint(_scCorner); } }
+  return _scBox.getCenter(_scCenter);
+}
+const _sv=new THREE.Vector3();
+function screenFitSprite(sp,frac=0.06){ // 让精灵在屏幕上保持固定大小（约占视口高度 frac）
+  const d=sp.getWorldPosition(_sv).distanceTo(camera.position);
+  const h=2*d*Math.tan(THREE.MathUtils.degToRad(camera.fov)/2)*frac;
+  sp.scale.set(h*sp.userData.aspect,h,1);
+}
+function updateLabels(){ // 双面标签：只显示朝向相机的一面，避免背面标签"探头"
+  for(const p of labelPairs){
+    const on=p.on();
+    if(!on){ p.pos.visible=false; p.neg.visible=false; continue; }
+    const el=worldT[p.face].elements;
+    _n.set(el[8],el[9],el[10]);
+    _fp.set(el[12],el[13],el[14]);
+    _tc.copy(camera.position).sub(_fp);
+    const front=_n.dot(_tc)>=0;
+    p.pos.visible=front; p.neg.visible=!front;
+    const vis=front?p.pos:p.neg;
+    if(vis.userData.screenFixed) screenFitSprite(vis); // 面名屏幕等大：不随尺寸/缩放变化
+  }
+}
+function loop(){
+  requestAnimationFrame(loop);
+  const now=performance.now(), t=clock.getElapsedTime();
+  stepTweens(now);
+  // 可剪蓝棱呼吸闪烁
+  if(state.mode==='cut'){
+    for(const e of ALL_EDGES){ if(!state.uncut.has(e)||bridges.has(e)) continue;
+      rodMesh[e].material.emissiveIntensity=0.55+0.4*Math.sin(t*3.2); }
+  }
+  controls.target.lerp(camFocus || shapeCenter(), 0.12); // 演示时吸附聚焦棱，平时吸附几何中心
+  controls.update();
+  updateTransforms();
+  updateLabels();
+  renderer.render(scene,camera);
+}
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+/* ================================================================
+ * 启动
+ * ================================================================ */
+buildBox();
+fitCamera(true);
+updateStats();
+loop();
+setTimeout(()=>toast('👋 欢迎来到纸盒展开课堂！点右上角 ❓ 可查看使用说明','info',3600),600);
+
+// 调试接口（供自动化测试）
+window.__demo={ get state(){return state}, dims:()=>dims, tryCut, tryToggleFace, applyPreset, undo, resetAll,
+  unfoldAll, foldAll, netsOverlap, flatRects, ALL_EDGES, EDGE_FACES, eid, tryCount, autoUnfoldFreeFaces, animatingEdge,
+  worldT, closedT, hingeData, rebuildTopology, FACE_IDS, connectedWithout,
+  getBfsOrder:()=>bfsOrder, getBridges:()=>[...bridges], getParents:()=>({...parentEdge}),
+  camera, renderer, THREE, controls,
+  setDims:(a,b,h)=>{ applyDims(a,b,h);
+    document.getElementById('sldA').value=a; document.getElementById('valA').textContent=a;
+    document.getElementById('sldB').value=b; document.getElementById('valB').textContent=b;
+    document.getElementById('sldH').value=h; document.getElementById('valH').textContent=h; } };
+</script>
+</body>
+</html>
